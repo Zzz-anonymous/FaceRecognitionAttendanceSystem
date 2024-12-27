@@ -1,6 +1,6 @@
 import streamlit as st
 import cv2
-import pickle
+import json
 import numpy as np
 import os
 from PIL import Image
@@ -26,40 +26,34 @@ def process_face_data(face_image, name):
 
         # Crop face image
         crop_img = face_image[y:y + h, x:x + w]
-        resized_img = cv2.resize(crop_img, (50, 50))  # Resize to a fixed size
-        faces_data.append(resized_img.flatten())  # Flatten the image before adding
+        resized_img = cv2.resize(crop_img, (100, 100))  # Resize to a fixed size
+        faces_data.append(resized_img.flatten().tolist())  # Flatten the image before adding
 
     # Load or initialize existing face data
-    if 'faces_data.pkl' in os.listdir('data/'):
-        with open('data/faces_data.pkl', 'rb') as f:
-            existing_faces = pickle.load(f)
+    if os.path.exists('data/faces_data.json'):
+        with open('data/faces_data.json', 'r') as f:
+            existing_faces = json.load(f)
     else:
-        existing_faces = np.empty((0, 7500))  # Initialize with correct dimensions if file doesn't exist
+        existing_faces = []  # Initialize if file doesn't exist
 
-    # Convert new face data to array and ensure consistent dimensions
-    faces_data = np.asarray(faces_data)
-    if faces_data.size > 0:  # Only append if new faces are detected
-        if existing_faces.size == 0:
-            existing_faces = faces_data
-        else:
-            existing_faces = np.vstack([existing_faces, faces_data])  # Use vstack for consistent shape
+    existing_faces.extend(faces_data)
 
     # Save updated face data
-    with open('data/faces_data.pkl', 'wb') as f:
-        pickle.dump(existing_faces, f)
+    with open('data/faces_data.json', 'w') as f:
+        json.dump(existing_faces, f)
 
     # Process and save names
-    if 'names.pkl' in os.listdir('data/'):
-        with open('data/names.pkl', 'rb') as f:
-            existing_names = pickle.load(f)
+    if os.path.exists('data/names.json'):
+        with open('data/names.json', 'r') as f:
+            existing_names = json.load(f)
     else:
         existing_names = []
 
     new_names = [name] * len(faces_data)
     existing_names.extend(new_names)
 
-    with open('data/names.pkl', 'wb') as f:
-        pickle.dump(existing_names, f)
+    with open('data/names.json', 'w') as f:
+        json.dump(existing_names, f)
 
     st.success("Face captured and data saved successfully!")
     st.image(face_image, caption="Image with Face Highlighted", use_container_width=True)
@@ -86,13 +80,13 @@ if page == "Upload Image":
             st.error("Please enter your name.")
         else:
             # Load existing data
-            if os.path.exists('data/faces_data.pkl') and os.path.exists('data/names.pkl'):
-                with open('data/faces_data.pkl', 'rb') as f:
-                    faces_data = pickle.load(f)
-                with open('data/names.pkl', 'rb') as f:
-                    names = pickle.load(f)
+            if os.path.exists('data/faces_data.json') and os.path.exists('data/names.json'):
+                with open('data/faces_data.json', 'r') as f:
+                    faces_data = json.load(f)
+                with open('data/names.json', 'r') as f:
+                    names = json.load(f)
             else:
-                faces_data = np.empty((0, 7500))  # Initialize with correct dimensions
+                faces_data = []  # Initialize if files do not exist
                 names = []
 
             # Open and process the image
@@ -112,11 +106,11 @@ if page == "Upload Image":
                 for (x, y, w, h) in faces:
                     # Crop and resize the face
                     crop_img = image[y:y + h, x:x + w, :]
-                    resized_img = cv2.resize(crop_img, (50, 50))
+                    resized_img = cv2.resize(crop_img, (100, 100))
 
                     # Flatten the image and add to dataset
-                    resized_img = resized_img.flatten()
-                    faces_data = np.append(faces_data, [resized_img], axis=0)
+                    resized_img = resized_img.flatten().tolist()
+                    faces_data.append(resized_img)
                     names.append(name)
 
                     # Only add the first face detected
@@ -124,32 +118,47 @@ if page == "Upload Image":
                     break
 
                 # Save updated data
-                with open('data/faces_data.pkl', 'wb') as f:
-                    pickle.dump(faces_data, f)
+                with open('data/faces_data.json', 'w') as f:
+                    json.dump(faces_data, f)
 
-                with open('data/names.pkl', 'wb') as f:
-                    pickle.dump(names, f)
+                with open('data/names.json', 'w') as f:
+                    json.dump(names, f)
 
                 st.write(f"Updated dataset saved successfully!")
 
 elif page == "View Captured Faces":
     st.header("Captured Faces and Names")
-    
-    if os.path.exists('data/faces_data.pkl') and os.path.exists('data/names.pkl'):
-        with open('data/faces_data.pkl', 'rb') as f:
-            faces_data = pickle.load(f)
-        with open('data/names.pkl', 'rb') as f:
-            names = pickle.load(f)
-        
+
+    # Check if the data files exist
+    if os.path.exists('data/faces_data.json') and os.path.exists('data/names.json'):
+        with open('data/faces_data.json', 'r') as f:
+            faces_data = json.load(f)
+        with open('data/names.json', 'r') as f:
+            names = json.load(f)
+
+        # Validate data consistency
+        if len(faces_data) != len(names):
+            st.error("Mismatch between the number of faces and names. Data might be corrupted.")
+
+            # Truncate data to match the shorter length
+            min_length = min(len(faces_data), len(names))
+            faces_data = faces_data[:min_length]
+            names = names[:min_length]
+            st.warning("Mismatched data has been truncated to the smallest valid size.")
+
+        # Display the captured faces and names
         for i in range(len(names)):
-            # Convert flattened faces back to image format
-            face_image = faces_data[i].reshape(50, 50, 3)  # Reshape the flattened array back to 50x50x3
-            face_image = Image.fromarray(face_image.astype(np.uint8))  # Convert to a PIL Image
-            
-            # Display name and image
-            st.image(face_image, caption=names[i], use_container_width=True)
+            try:
+                # Reshape flattened face to image format
+                face_image = np.array(faces_data[i]).reshape(100, 100, 3)  # Assuming RGB channels
+                face_image = Image.fromarray(face_image.astype(np.uint8))  # Convert to PIL Image
+
+                # Display name and image
+                st.image(face_image, caption=names[i], use_container_width=True)
+            except Exception as e:
+                st.error(f"Error processing face at index {i}: {e}")
     else:
-        st.write("No faces data found.")
+        st.write("No faces data found. Please ensure 'faces_data.json' and 'names.json' exist in the 'data' folder.")
 
 elif page == "Real-time Face Capture":
     st.header("Real-time Face Capture")
