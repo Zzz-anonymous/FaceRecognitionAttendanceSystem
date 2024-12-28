@@ -23,7 +23,7 @@ try:
     with open('data/names.pkl', 'rb') as w:
         LABELS = pickle.load(w)
     with open('data/faces_data.pkl', 'rb') as f:
-        FACES = np.array(pickle.load(f))
+        FACES = np.array(pickle.load(f))  # Convert list to np.array
 except FileNotFoundError:
     print("Data files not found. Ensure 'names.pkl' and 'faces_data.pkl' exist in the 'data' folder.")
     exit()
@@ -79,12 +79,9 @@ try:
             crop_img = frame[y:y + h, x:x + w, :]
             resized_img = cv2.resize(crop_img, (100, 100)).flatten().reshape(1, -1)
 
-            # Ensure the input matches the training data type and shape
-            resized_img = resized_img.astype(np.float32)  # Convert to match training data type
-
             # Validate KNN input dimensions
             if resized_img.shape[1] != FACES.shape[1]:
-                print(f"Input dimension mismatch: Expected {FACES.shape[1]}, got {resized_img.shape[1]}. Skipping...")
+                print("Mismatch in input dimensions for KNN. Skipping this detection.")
                 continue
 
             output = knn.predict(resized_img)[0]
@@ -100,7 +97,8 @@ try:
                 cv2.rectangle(frame, (x, y - 40), (x + w, y), (50, 50, 255), -1)
                 cv2.putText(frame, str(output), (x, y - 15), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
 
-        # Embed frame into background image
+
+                # Embed frame into background image
         if imgBackground.shape[0] >= frame.shape[0] and imgBackground.shape[1] >= frame.shape[1]:
             imgBackground[162:162 + frame.shape[0], 55:55 + frame.shape[1]] = frame
         else:
