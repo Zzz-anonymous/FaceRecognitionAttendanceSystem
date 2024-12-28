@@ -1,6 +1,6 @@
 import streamlit as st
 import cv2
-import json
+import pickle
 import numpy as np
 import os
 from PIL import Image
@@ -10,16 +10,14 @@ def process_face_data(face_image, name):
     # Convert the image to grayscale
     gray = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
     faceDetect = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    
+
     faces = faceDetect.detectMultiScale(gray, 1.3, 5)
-    
+
     if len(faces) == 0:  # No faces detected
         st.error("No face detected in the image. Please try again!")
         return  # Exit the function
 
     faces_data = []
-    names = []
-
     for (x, y, w, h) in faces:
         # Draw a rectangle around each face
         cv2.rectangle(face_image, (x, y), (x + w, y + h), (255, 0, 0), 2)  # Blue rectangle with 2px thickness
@@ -27,33 +25,33 @@ def process_face_data(face_image, name):
         # Crop face image
         crop_img = face_image[y:y + h, x:x + w]
         resized_img = cv2.resize(crop_img, (100, 100))  # Resize to a fixed size
-        faces_data.append(resized_img.flatten().tolist())  # Flatten the image before adding
+        faces_data.append(resized_img.flatten())  # Flatten the image before adding
 
     # Load or initialize existing face data
-    if os.path.exists('data/faces_data.json'):
-        with open('data/faces_data.json', 'r') as f:
-            existing_faces = json.load(f)
+    if os.path.exists('data/faces_data.pkl'):
+        with open('data/faces_data.pkl', 'rb') as f:
+            existing_faces = pickle.load(f)
     else:
         existing_faces = []  # Initialize if file doesn't exist
 
     existing_faces.extend(faces_data)
 
     # Save updated face data
-    with open('data/faces_data.json', 'w') as f:
-        json.dump(existing_faces, f)
+    with open('data/faces_data.pkl', 'wb') as f:
+        pickle.dump(existing_faces, f)
 
     # Process and save names
-    if os.path.exists('data/names.json'):
-        with open('data/names.json', 'r') as f:
-            existing_names = json.load(f)
+    if os.path.exists('data/names.pkl'):
+        with open('data/names.pkl', 'rb') as f:
+            existing_names = pickle.load(f)
     else:
         existing_names = []
 
     new_names = [name] * len(faces_data)
     existing_names.extend(new_names)
 
-    with open('data/names.json', 'w') as f:
-        json.dump(existing_names, f)
+    with open('data/names.pkl', 'wb') as f:
+        pickle.dump(existing_names, f)
 
     st.success("Face captured and data saved successfully!")
     st.image(face_image, caption="Image with Face Highlighted", use_container_width=True)
@@ -79,62 +77,20 @@ if page == "Upload Image":
         elif not name:
             st.error("Please enter your name.")
         else:
-            # Load existing data
-            if os.path.exists('data/faces_data.json') and os.path.exists('data/names.json'):
-                with open('data/faces_data.json', 'r') as f:
-                    faces_data = json.load(f)
-                with open('data/names.json', 'r') as f:
-                    names = json.load(f)
-            else:
-                faces_data = []  # Initialize if files do not exist
-                names = []
-
             # Open and process the image
             image = Image.open(image_file)
             image = np.array(image)
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-            # Load Haar Cascade for face detection
-            faceDetect = cv2.CascadeClassifier('data/haarcascade_frontalface_default.xml')
-
-            # Detect faces in the image
-            faces = faceDetect.detectMultiScale(gray, 1.3, 5)
-
-            if len(faces) == 0:
-                st.write("No face detected in the image.")
-            else:
-                for (x, y, w, h) in faces:
-                    # Crop and resize the face
-                    crop_img = image[y:y + h, x:x + w, :]
-                    resized_img = cv2.resize(crop_img, (100, 100))
-
-                    # Flatten the image and add to dataset
-                    resized_img = resized_img.flatten().tolist()
-                    faces_data.append(resized_img)
-                    names.append(name)
-
-                    # Only add the first face detected
-                    st.write(f"Face added for {name}.")
-                    break
-
-                # Save updated data
-                with open('data/faces_data.json', 'w') as f:
-                    json.dump(faces_data, f)
-
-                with open('data/names.json', 'w') as f:
-                    json.dump(names, f)
-
-                st.write(f"Updated dataset saved successfully!")
+            process_face_data(image, name)
 
 elif page == "View Captured Faces":
     st.header("Captured Faces and Names")
 
     # Check if the data files exist
-    if os.path.exists('data/faces_data.json') and os.path.exists('data/names.json'):
-        with open('data/faces_data.json', 'r') as f:
-            faces_data = json.load(f)
-        with open('data/names.json', 'r') as f:
-            names = json.load(f)
+    if os.path.exists('data/faces_data.pkl') and os.path.exists('data/names.pkl'):
+        with open('data/faces_data.pkl', 'rb') as f:
+            faces_data = pickle.load(f)
+        with open('data/names.pkl', 'rb') as f:
+            names = pickle.load(f)
 
         # Validate data consistency
         if len(faces_data) != len(names):
@@ -158,7 +114,7 @@ elif page == "View Captured Faces":
             except Exception as e:
                 st.error(f"Error processing face at index {i}: {e}")
     else:
-        st.write("No faces data found. Please ensure 'faces_data.json' and 'names.json' exist in the 'data' folder.")
+        st.write("No faces data found. Please ensure 'faces_data.pkl' and 'names.pkl' exist in the 'data' folder.")
 
 elif page == "Real-time Face Capture":
     st.header("Real-time Face Capture")
@@ -180,7 +136,7 @@ elif page == "Real-time Face Capture":
             # Check if image is in the correct shape
             if img_array.ndim == 2:  # Grayscale image
                 img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)  # Convert to 3 channels (BGR)
-            
+
             # Ensure the image is in uint8 format
             img_array = img_array.astype(np.uint8)
 

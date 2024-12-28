@@ -1,6 +1,6 @@
 from sklearn.neighbors import KNeighborsClassifier
 import cv2
-import json
+import pickle
 import numpy as np
 import os
 import csv
@@ -20,12 +20,12 @@ if not os.path.exists('Attendance'):
 
 # Load pre-trained face data and labels
 try:
-    with open('data/names.json', 'r') as w:
-        LABELS = json.load(w)
-    with open('data/faces_data.json', 'r') as f:
-        FACES = np.array(json.load(f))
+    with open('data/names.pkl', 'rb') as w:
+        LABELS = pickle.load(w)
+    with open('data/faces_data.pkl', 'rb') as f:
+        FACES = np.array(pickle.load(f))
 except FileNotFoundError:
-    print("Data files not found. Ensure 'names.json' and 'faces_data.json' exist in the 'data' folder.")
+    print("Data files not found. Ensure 'names.pkl' and 'faces_data.pkl' exist in the 'data' folder.")
     exit()
 
 print('Shape of Faces matrix --> ', FACES.shape)
@@ -76,12 +76,16 @@ try:
         existing_attendance = load_attendance(date)
 
         for (x, y, w, h) in faces:
+            # Crop and resize the face
             crop_img = frame[y:y + h, x:x + w, :]
             resized_img = cv2.resize(crop_img, (100, 100)).flatten().reshape(1, -1)
 
+            # Ensure the input matches the training data type and shape
+            resized_img = resized_img.astype(np.float32)  # Convert to match training data type
+
             # Validate KNN input dimensions
             if resized_img.shape[1] != FACES.shape[1]:
-                print("Mismatch in input dimensions for KNN. Skipping this detection.")
+                print(f"Input dimension mismatch: Expected {FACES.shape[1]}, got {resized_img.shape[1]}. Skipping...")
                 continue
 
             output = knn.predict(resized_img)[0]
