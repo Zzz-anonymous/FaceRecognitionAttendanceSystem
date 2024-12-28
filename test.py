@@ -75,30 +75,7 @@ try:
         # Load existing attendance for the day
         existing_attendance = load_attendance(date)
 
-        # for (x, y, w, h) in faces:
-        #     crop_img = frame[y:y + h, x:x + w, :]
-        #     resized_img = cv2.resize(crop_img, (100, 100)).flatten().reshape(1, -1)
-
-        #     # Validate KNN input dimensions
-        #     if resized_img.shape[1] != FACES.shape[1]:
-        #         print("Mismatch in input dimensions for KNN. Skipping this detection.")
-        #         continue
-
-        #     output = knn.predict(resized_img)[0]
-        #     timestamp = datetime.fromtimestamp(ts).strftime('%H:%M:%S')
-
-        #     # Check if the person has already taken attendance
-        #     if output not in existing_attendance:
-        #         detected_attendance.append([output, timestamp])
-        #         existing_attendance.add(output)
-
-        #         # Draw rectangles and text
-        #         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
-        #         cv2.rectangle(frame, (x, y - 40), (x + w, y), (50, 50, 255), -1)
-        #         cv2.putText(frame, str(output), (x, y - 15), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
-
         for (x, y, w, h) in faces:
-            # Crop and resize the face
             crop_img = frame[y:y + h, x:x + w, :]
             resized_img = cv2.resize(crop_img, (100, 100)).flatten().reshape(1, -1)
 
@@ -110,29 +87,20 @@ try:
                 print(f"Input dimension mismatch: Expected {FACES.shape[1]}, got {resized_img.shape[1]}. Skipping...")
                 continue
 
-            # Get the prediction and distances from KNN
-            distances, indices = knn.kneighbors(resized_img, n_neighbors=1)
-            distance = distances[0][0]  # Distance to the nearest neighbor
             output = knn.predict(resized_img)[0]
-
-            # Assign label based on distance threshold
-            threshold = 0.6  # Adjust this value based on your dataset
-            label = output if distance < threshold else "Unknown"
-
             timestamp = datetime.fromtimestamp(ts).strftime('%H:%M:%S')
 
             # Check if the person has already taken attendance
-            if label not in existing_attendance:
-                detected_attendance.append([label, timestamp])
-                existing_attendance.add(label)
+            if output not in existing_attendance:
+                detected_attendance.append([output, timestamp])
+                existing_attendance.add(output)
 
                 # Draw rectangles and text
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
                 cv2.rectangle(frame, (x, y - 40), (x + w, y), (50, 50, 255), -1)
-                cv2.putText(frame, str(label), (x, y - 15), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
+                cv2.putText(frame, str(output), (x, y - 15), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
 
-
-                # Embed frame into background image
+        # Embed frame into background image
         if imgBackground.shape[0] >= frame.shape[0] and imgBackground.shape[1] >= frame.shape[1]:
             imgBackground[162:162 + frame.shape[0], 55:55 + frame.shape[1]] = frame
         else:
