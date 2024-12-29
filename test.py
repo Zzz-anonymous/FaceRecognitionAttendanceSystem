@@ -20,27 +20,30 @@ face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fronta
 recognizer = cv2.face.LBPHFaceRecognizer_create()
 recognizer.read('data/trainer.yml')  # Load the pre-trained model
 
+# Function to speak a message
 def speak(message):
-    speak = Dispatch("SAPI.SpVoice")
-    speak.Speak(message)
+    speaker = Dispatch("SAPI.SpVoice")
+    speaker.Speak(message)
 
-# Attendance marking function
-def markAttendance(name):
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    print(f"Attendance marked for {name} at {timestamp}")
+# Attendance file path for the current date
+attendance_file = f"Attendance/Attendance_{datetime.now().strftime('%Y-%m-%d')}.csv"
 
-# Define the confidence threshold (lower is more sensitive)
-threshold = 100  # Lower threshold for confidence
+# Load previous attendance if the file exists and is not empty
+if os.path.exists(attendance_file):
+    with open(attendance_file, "r") as csvfile:
+        reader = csv.reader(csvfile)
+        header = next(reader, None)  # Skip the header if it exists
+        marked_names = [row[0] for row in reader if row]  # Get all previously marked names, handle empty rows
+else:
+    marked_names = []  # Initialize as empty if the file doesn't exist
+# Persistent attendance list
+all_attendance = []
 
-# Background image
+# Background image (optional)
 if os.path.exists("background.png"):
     imgBackground = cv2.imread("background.png")
 else:
     imgBackground = np.zeros((720, 1280, 3), dtype=np.uint8)  # Placeholder background
-
-# List to store names of people who have marked attendance for the current session
-marked_names = []  # Track names already marked for attendance
-all_attendance = []  # Persistent list to store attendance across frames
 
 while True:
     success, frame = video.read()
@@ -48,35 +51,28 @@ while True:
     if not success:
         break
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # Convert frame to grayscale
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
 
     for (x, y, w, h) in faces:
-        print(f"Detected face at position: x={x}, y={y}, w={w}, h={h}")
         face = frame[y:y + h, x:x + w]
         gray_face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
 
         label, confidence = recognizer.predict(gray_face)
-        print(f"Predicted label: {label}, Confidence: {confidence}")
-
-        if 0 <= label < len(known_face_names):  # Ensure label is valid
+        if 0 <= label < len(known_face_names):
             name = known_face_names[label]
-            if confidence < 90:  # Adjust confidence threshold
-                print(f"Recognized: {name}")
-                if name not in marked_names:  # Only add if not already recorded
-                    all_attendance.append([name, datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
-                    marked_names.append(name)  # Add to the marked list
+            if confidence < 95:  # Adjust confidence threshold
+                if name not in marked_names:  # Check if already marked
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    all_attendance.append([name, timestamp])
+                    marked_names.append(name)  # Add to persistent marked list
+                    print(f"Attendance marked for {name} at {timestamp}")
             else:
-                print(f"Low confidence ({confidence}). Skipping...")
-                name = "Unknown"  # Label as "Unknown" for low confidence
+                name = "Unknown"
         else:
-            print(f"Invalid label: {label}. Skipping...")
-            name = "Unknown"  # Label as "Unknown" for low confidence
+            name = "Unknown"
 
-        # Debug persistent attendance
-        print("All Attendance:", all_attendance)
-
-        # Draw rectangle and label around the face
+        # Draw rectangle and label
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
         cv2.rectangle(frame, (x, y + h - 35), (x + w, y + h), (0, 0, 255), cv2.FILLED)
         cv2.putText(frame, name, (x + 6, y + h - 6), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255), 1)
@@ -86,33 +82,28 @@ while True:
 
     k = cv2.waitKey(1)
 
-    # Take attendance when 'o' is pressed
+    # Save attendance when 'o' is pressed
     if k == ord('o'):
-        if all_attendance:  # Check persistent attendance list
+        if all_attendance:
             speak("Attendance Taken.")
-            time.sleep(2)
-            attendance_file = f"Attendance/Attendance_{datetime.now().strftime('%Y-%m-%d')}.csv"
             if os.path.exists(attendance_file):
                 with open(attendance_file, "a", newline='') as csvfile:
                     writer = csv.writer(csvfile)
                     writer.writerows(all_attendance)
             else:
+                os.makedirs(os.path.dirname(attendance_file), exist_ok=True)
                 with open(attendance_file, "w", newline='') as csvfile:
                     writer = csv.writer(csvfile)
                     writer.writerow(["Name", "Timestamp"])
                     writer.writerows(all_attendance)
-            all_attendance = []  # Clear after saving            
+            all_attendance = []  # Clear temporary attendance after saving
         else:
             speak("No new attendance to record.")
 
-    # Quit program
-    if k == ord('q'):  # 'q' to quit the program
+    if k == ord('q'):  # Exit the program
         print("Exiting program...")
         break
 
-
-# Release video capture and close all OpenCV windows
+# Release video capture and close windows
 video.release()
 cv2.destroyAllWindows()
-
-
