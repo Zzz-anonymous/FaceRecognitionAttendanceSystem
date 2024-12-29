@@ -1,40 +1,36 @@
-from sklearn.neighbors import KNeighborsClassifier
 import cv2
-import pickle
 import numpy as np
+import pickle
+import time
 import os
 import csv
-import time
 from datetime import datetime
 from win32com.client import Dispatch
+
+# Load face names from names.pkl file
+with open('data/names.pkl', 'rb') as f:
+    known_face_names = pickle.load(f)
+
+# Initialize video capture and setup
+video = cv2.VideoCapture(0) 
+
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+# Load the trained face recognizer
+recognizer = cv2.face.LBPHFaceRecognizer_create()
+recognizer.read('data/trainer.yml')  # Load the pre-trained model
 
 def speak(message):
     speak = Dispatch("SAPI.SpVoice")
     speak.Speak(message)
 
-# Ensure necessary directories exist
-if not os.path.exists('data'):
-    os.makedirs('data')
-if not os.path.exists('Attendance'):
-    os.makedirs('Attendance')
+# Attendance marking function
+def markAttendance(name):
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(f"Attendance marked for {name} at {timestamp}")
 
-# Load pre-trained face data and labels
-try:
-    with open('data/names.pkl', 'rb') as w:
-        LABELS = pickle.load(w)
-    with open('data/faces_data.pkl', 'rb') as f:
-        FACES = np.array(pickle.load(f))  # Convert list to np.array
-except FileNotFoundError:
-    print("Data files not found. Ensure 'names.pkl' and 'faces_data.pkl' exist in the 'data' folder.")
-    exit()
-
-print('Shape of Faces matrix --> ', FACES.shape)
-
-# Dynamically set n_neighbors based on dataset size
-n_neighbors = min(3, len(LABELS))
-knn = KNeighborsClassifier(n_neighbors=n_neighbors)
-knn.fit(FACES, LABELS)
-print(f"Training completed with n_neighbors={n_neighbors}")
+# Define the confidence threshold (lower is more sensitive)
+threshold = 100  # Lower threshold for confidence
 
 # Background image
 if os.path.exists("background.png"):
@@ -42,90 +38,81 @@ if os.path.exists("background.png"):
 else:
     imgBackground = np.zeros((720, 1280, 3), dtype=np.uint8)  # Placeholder background
 
-COL_NAMES = ['NAME', 'TIME']
+# List to store names of people who have marked attendance for the current session
+marked_names = []  # Track names already marked for attendance
+all_attendance = []  # Persistent list to store attendance across frames
 
-# Function to load attendance records for the day
-def load_attendance(date):
-    attendance_file = f"Attendance/Attendance_{date}.csv"
-    if os.path.exists(attendance_file):
-        with open(attendance_file, "r") as csvfile:
-            reader = csv.reader(csvfile)
-            return {row[0] for row in reader if row}
-    return set()
+while True:
+    success, frame = video.read()
+    frame = cv2.flip(frame, 1)
+    if not success:
+        break
 
-# Video capture
-video = cv2.VideoCapture(0)
-facedetect = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # Convert frame to grayscale
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
 
-try:
-    while True:
-        ret, frame = video.read()
-        if not ret:
-            print("Failed to read frame from video stream. Exiting...")
-            break
+    for (x, y, w, h) in faces:
+        print(f"Detected face at position: x={x}, y={y}, w={w}, h={h}")
+        face = frame[y:y + h, x:x + w]
+        gray_face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = facedetect.detectMultiScale(gray, 1.3, 5)
+        label, confidence = recognizer.predict(gray_face)
+        print(f"Predicted label: {label}, Confidence: {confidence}")
 
-        detected_attendance = []
-        ts = time.time()
-        date = datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
-        attendance_file = f"Attendance/Attendance_{date}.csv"
-
-        # Load existing attendance for the day
-        existing_attendance = load_attendance(date)
-
-        for (x, y, w, h) in faces:
-            crop_img = frame[y:y + h, x:x + w, :]
-            resized_img = cv2.resize(crop_img, (100, 100)).flatten().reshape(1, -1)
-
-            # Validate KNN input dimensions
-            if resized_img.shape[1] != FACES.shape[1]:
-                print("Mismatch in input dimensions for KNN. Skipping this detection.")
-                continue
-
-            output = knn.predict(resized_img)[0]
-            timestamp = datetime.fromtimestamp(ts).strftime('%H:%M:%S')
-
-            # Check if the person has already taken attendance
-            if output not in existing_attendance:
-                detected_attendance.append([output, timestamp])
-                existing_attendance.add(output)
-
-                # Draw rectangles and text
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                cv2.rectangle(frame, (x, y - 40), (x + w, y), (50, 50, 255), -1)
-                cv2.putText(frame, str(output), (x, y - 15), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
-
-
-                # Embed frame into background image
-        if imgBackground.shape[0] >= frame.shape[0] and imgBackground.shape[1] >= frame.shape[1]:
-            imgBackground[162:162 + frame.shape[0], 55:55 + frame.shape[1]] = frame
-        else:
-            imgBackground = frame  # Fallback if background is smaller
-
-        cv2.imshow("Frame", imgBackground)
-        k = cv2.waitKey(1)
-
-        if k == ord('o'):  # Take attendance for all detected faces
-            if detected_attendance:
-                speak("Attendance Taken.")
-                time.sleep(2)
-                if os.path.exists(attendance_file):
-                    with open(attendance_file, "a", newline='') as csvfile:
-                        writer = csv.writer(csvfile)
-                        writer.writerows(detected_attendance)
-                else:
-                    with open(attendance_file, "w", newline='') as csvfile:
-                        writer = csv.writer(csvfile)
-                        writer.writerow(COL_NAMES)
-                        writer.writerows(detected_attendance)
+        if 0 <= label < len(known_face_names):  # Ensure label is valid
+            name = known_face_names[label]
+            if confidence < 90:  # Adjust confidence threshold
+                print(f"Recognized: {name}")
+                if name not in marked_names:  # Only add if not already recorded
+                    all_attendance.append([name, datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+                    marked_names.append(name)  # Add to the marked list
             else:
-                speak("No new attendance to record.")
+                print(f"Low confidence ({confidence}). Skipping...")
+                name = "Unknown"  # Label as "Unknown" for low confidence
+        else:
+            print(f"Invalid label: {label}. Skipping...")
+            name = "Unknown"  # Label as "Unknown" for low confidence
 
-        if k == ord('q'):  # Quit
-            print("Exiting program...")
-            break
-finally:
-    video.release()
-    cv2.destroyAllWindows()
+        # Debug persistent attendance
+        print("All Attendance:", all_attendance)
+
+        # Draw rectangle and label around the face
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+        cv2.rectangle(frame, (x, y + h - 35), (x + w, y + h), (0, 0, 255), cv2.FILLED)
+        cv2.putText(frame, name, (x + 6, y + h - 6), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255), 1)
+
+    # Show the frame
+    cv2.imshow("Face Recognition", frame)
+
+    k = cv2.waitKey(1)
+
+    # Take attendance when 'o' is pressed
+    if k == ord('o'):
+        if all_attendance:  # Check persistent attendance list
+            speak("Attendance Taken.")
+            time.sleep(2)
+            attendance_file = f"Attendance/Attendance_{datetime.now().strftime('%Y-%m-%d')}.csv"
+            if os.path.exists(attendance_file):
+                with open(attendance_file, "a", newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerows(all_attendance)
+            else:
+                with open(attendance_file, "w", newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(["Name", "Timestamp"])
+                    writer.writerows(all_attendance)
+            all_attendance = []  # Clear after saving            
+        else:
+            speak("No new attendance to record.")
+
+    # Quit program
+    if k == ord('q'):  # 'q' to quit the program
+        print("Exiting program...")
+        break
+
+
+# Release video capture and close all OpenCV windows
+video.release()
+cv2.destroyAllWindows()
+
+
