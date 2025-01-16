@@ -4,16 +4,23 @@
 - Visual Studio Code
 
 ## Installation 
-1. Go to Visual Studio Code terminal and type for running train_data.py file
+1. Open the Visual Studio Code terminal and run the following command to install OpenCV for the train_data.py file:
 > pip install opencv-python
 
-2. Go to Visual Studio Code terminal and type for running train_data.py file
-> pip install opencv-python
+After installing, you can click the **Run** button in Visual Studio Code to execute test.py.
 
-3.Go to Visual Studio Code terminal and type for running train_data.py file
-> streamlit run .py
+2. Open the Visual Studio Code terminal and run the following command to install PyWin32 for the test.py file:
+> pip install pywin32
+
+After installing, you can click the **Run** button in Visual Studio Code to execute test.py.
+
+3. Open the Visual Studio Code terminal and run the following command to start the app using Streamlit to view the daily attendance report:
+> streamlit run app.py
+
+After completing these steps, you should be able to run the project successfully.
 
 <hr>
+
 # Real-time Video Capture
 <div align="center">
   <img src="https://github.com/user-attachments/assets/322a6729-8804-4a06-8210-624a397c62e3" width="350" title="Real-time Video Capture">
