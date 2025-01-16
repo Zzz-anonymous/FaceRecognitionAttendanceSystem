@@ -1,3 +1,19 @@
+# Getting Started
+## Prerequisites
+- Python3
+- Visual Studio Code
+
+## Installation 
+1. Go to Visual Studio Code terminal and type for running train_data.py file
+> pip install opencv-python
+
+2. Go to Visual Studio Code terminal and type for running train_data.py file
+> pip install opencv-python
+
+3.Go to Visual Studio Code terminal and type for running train_data.py file
+> streamlit run .py
+
+<hr>
 # Real-time Video Capture
 <div align="center">
   <img src="https://github.com/user-attachments/assets/322a6729-8804-4a06-8210-624a397c62e3" width="350" title="Real-time Video Capture">
